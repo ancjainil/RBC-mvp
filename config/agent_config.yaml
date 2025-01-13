@@ -1,0 +1,164 @@
+# ============================================================
+# Agent Configuration
+# All thresholds, model parameters, and prompt fragments
+# that agents read at startup.  Business-logic values live
+# here — not in Python source code.
+# ============================================================
+
+# ── Risk thresholds ─────────────────────────────────────────
+risk:
+  low_max: 0.30         # fraud_probability  < 0.30  → LOW
+  medium_max: 0.60      # fraud_probability  < 0.60  → MEDIUM
+  high_max: 0.85        # fraud_probability  < 0.85  → HIGH
+  critical_min: 0.85    # fraud_probability >= 0.85  → CRITICAL
+
+# ── Orchestrator decision ────────────────────────────────────
+orchestrator:
+  approve_max_probability: 0.20
+  review_max_probability: 0.60
+  block_max_probability: 0.85
+  # >= block_max_probability → escalate
+
+# ── Transaction Agent ────────────────────────────────────────
+transaction_agent:
+  model_temperature: 0.0
+  max_tokens: 1024
+  # Feature engineering thresholds
+  amount_z_score_threshold: 2.5       # stddevs from customer mean
+  time_anomaly_hour_start: 1          # 01:00 — 05:00 local = suspicious
+  time_anomaly_hour_end: 5
+  geo_velocity_max_kmh: 900           # above this = physically impossible
+  high_risk_mcc_codes:                # ISO 18245 MCC codes
+    - "5944"   # Jewelry stores
+    - "5945"   # Hobby, toy, and game shops
+    - "5065"   # Electrical parts & equipment
+    - "7995"   # Gambling transactions
+    - "6051"   # Non-financial institutions (crypto)
+    - "4829"   # Wire transfers
+    - "6010"   # Manual cash disbursements
+    - "6011"   # Automated cash disbursements
+  prompt: |
+    You are a financial transaction analyst at a major Canadian bank. Your job is to
+    identify potentially fraudulent transactions by comparing them against the
+    customer's established behavioural baseline.
+
+    ## Transaction Under Review
+    {transaction_details}
+
+    ## Customer Historical Profile
+    {profile_summary}
+
+    ## Computed Anomaly Scores
+    {feature_scores}
+
+    Assess the fraud risk step by step:
+    1. Is the transaction amount unusual given this customer's typical spending?
+    2. Is the merchant category consistent with their purchase history?
+    3. Does the geographic location make sense given their recent activity?
+    4. Is the time of transaction unusual for this customer?
+    5. Are there any high-risk MCC codes or merchant flags present?
+
+    Respond with a JSON object:
+    {{
+      "risk_level": "LOW|MEDIUM|HIGH|CRITICAL",
+      "fraud_probability": <float 0-1>,
+      "confidence": <float 0-1>,
+      "reasoning": "<concise analyst narrative>",
+      "risk_signals": [
+        {{"signal_type": "<type>", "description": "<detail>", "severity": "LOW|MEDIUM|HIGH"}}
+      ]
+    }}
+
+# ── Behavioral Profiling Agent ───────────────────────────────
+behavioral_agent:
+  model_temperature: 0.0
+  max_tokens: 1024
+  time_windows_days: [7, 30, 90]
+  velocity_alert_txn_per_hour: 5     # > 5 txns/hour = velocity alert
+  category_shift_threshold: 0.40     # fraction of spend in new categories
+  amount_escalation_factor: 3.0      # current > 3× 30-day mean = alert
+  prompt: |
+    You are a behavioural fraud analyst specialising in account-takeover and
+    identity-fraud detection at a Canadian financial institution.
+
+    ## Behavioural Profile Summary
+    {behavioral_summary}
+
+    ## Detected Anomalies
+    {behavioral_anomalies}
+
+    Analyse the customer's recent behaviour across the 7-day, 30-day, and 90-day
+    windows.  Focus on:
+    1. Transaction velocity changes (are transactions accelerating?)
+    2. Merchant-category distribution shifts (new categories suddenly appearing?)
+    3. Amount escalation patterns (micro-test then large purchase?)
+    4. Channel or device changes (new device, new IP range?)
+    5. Time-of-day pattern shifts
+
+    Respond with a JSON object in the same schema as the transaction agent.
+
+# ── Context Enrichment Agent (RAG) ──────────────────────────
+context_agent:
+  model_temperature: 0.1
+  max_tokens: 1500
+  retrieval_top_k: 5
+  retrieval_similarity_threshold: 0.75
+  rerank_top_k: 3
+  prompt: |
+    You are a senior fraud intelligence analyst.  You have access to the bank's
+    internal knowledge base of documented fraud typologies, regulatory guidelines,
+    and merchant risk profiles.
+
+    ## Prior Agent Risk Signals
+    {risk_signals_summary}
+
+    ## Retrieved Knowledge Base Excerpts
+    {retrieved_context}
+
+    Using the retrieved context, determine:
+    1. Does this transaction pattern match any documented fraud typology?
+    2. Are there any FINTRAC / regulatory reporting obligations triggered?
+    3. What is the recommended investigation action?
+
+    Respond with a JSON object:
+    {{
+      "risk_level": "LOW|MEDIUM|HIGH|CRITICAL",
+      "fraud_probability": <float 0-1>,
+      "confidence": <float 0-1>,
+      "fraud_type": "<typology name or null>",
+      "regulatory_flags": ["<flag>"],
+      "reasoning": "<enriched narrative citing knowledge base>",
+      "risk_signals": [...]
+    }}
+
+# ── Orchestrator ────────────────────────────────────────────
+orchestrator_agent:
+  model_temperature: 0.0
+  max_tokens: 768
+  signal_weight_transaction: 0.35
+  signal_weight_behavioral: 0.30
+  signal_weight_context: 0.35
+  prompt: |
+    You are the chief fraud decisioning officer. You have received independent
+    risk assessments from three specialised agents.  Synthesise them into a
+    single final determination.
+
+    ## Transaction Agent Assessment
+    {transaction_assessment}
+
+    ## Behavioral Agent Assessment
+    {behavioral_assessment}
+
+    ## Context Enrichment Assessment
+    {context_assessment}
+
+    Provide a final determination as JSON:
+    {{
+      "risk_level": "LOW|MEDIUM|HIGH|CRITICAL",
+      "fraud_probability": <float 0-1>,
+      "is_fraudulent": <bool>,
+      "fraud_type": "<type or null>",
+      "recommended_action": "approve|review|block|escalate",
+      "explanation": "<compliance-ready plain-English explanation>",
+      "regulatory_flags": ["<flag>"]
+    }}
