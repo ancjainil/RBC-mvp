@@ -1,0 +1,126 @@
+{
+  "metadata": {
+    "version": "2.1.0",
+    "last_updated": "2024-11-01",
+    "source": "Internal Fraud Intelligence Unit",
+    "description": "Mock merchant risk profiles for RAG ingestion. Risk scores are illustrative."
+  },
+  "high_risk_mcc_codes": [
+    {
+      "mcc": "7995",
+      "description": "Gambling — horse racing, dog racing, state lotteries",
+      "risk_level": "HIGH",
+      "base_fraud_rate_pct": 3.2,
+      "notes": "FINTRAC requires enhanced monitoring for transactions > $500"
+    },
+    {
+      "mcc": "6051",
+      "description": "Non-financial institutions — cryptocurrency, foreign currency exchange",
+      "risk_level": "HIGH",
+      "base_fraud_rate_pct": 4.1,
+      "notes": "Common vehicle for converting fraud proceeds; monitor for structuring"
+    },
+    {
+      "mcc": "4829",
+      "description": "Wire transfer money orders",
+      "risk_level": "HIGH",
+      "base_fraud_rate_pct": 5.8,
+      "notes": "Immediate alert for first-time users or amounts > $2000"
+    },
+    {
+      "mcc": "5944",
+      "description": "Jewelry stores",
+      "risk_level": "HIGH",
+      "base_fraud_rate_pct": 2.9,
+      "notes": "High-resale-value goods; common ATO fraud target"
+    },
+    {
+      "mcc": "5065",
+      "description": "Electrical parts and equipment",
+      "risk_level": "MEDIUM_HIGH",
+      "base_fraud_rate_pct": 2.1,
+      "notes": "Electronics resale; common CNP fraud target"
+    },
+    {
+      "mcc": "6010",
+      "description": "Manual cash disbursements — financial institutions",
+      "risk_level": "HIGH",
+      "base_fraud_rate_pct": 6.3,
+      "notes": "Flag all transactions > $500"
+    },
+    {
+      "mcc": "6011",
+      "description": "Automated cash disbursements — ATMs",
+      "risk_level": "MEDIUM_HIGH",
+      "base_fraud_rate_pct": 1.8,
+      "notes": "Flag for unusual ATM locations or multiple withdrawals within 1 hour"
+    }
+  ],
+  "known_fraud_merchants": [
+    {
+      "merchant_name_pattern": "Digital Verify Service",
+      "risk_reason": "Common card-testing merchant name used by fraud rings",
+      "risk_level": "CRITICAL",
+      "fraud_type": "card_testing",
+      "reported_incidents": 847
+    },
+    {
+      "merchant_name_pattern": "Online Pharmacy*",
+      "risk_reason": "Unlicensed online pharmacies often involved in transaction laundering",
+      "risk_level": "HIGH",
+      "fraud_type": "merchant_collusion",
+      "reported_incidents": 312
+    },
+    {
+      "merchant_name_pattern": "Crypto.*Exchange",
+      "risk_reason": "Cryptocurrency exchanges used to launder fraud proceeds",
+      "risk_level": "HIGH",
+      "fraud_type": "money_laundering",
+      "reported_incidents": 1205
+    }
+  ],
+  "low_risk_merchants": [
+    {
+      "merchant_name": "Loblaws",
+      "mcc": "5411",
+      "risk_level": "LOW",
+      "base_fraud_rate_pct": 0.08,
+      "notes": "Major Canadian grocery chain; transactions are typically legitimate"
+    },
+    {
+      "merchant_name": "Shoppers Drug Mart",
+      "mcc": "5912",
+      "risk_level": "LOW",
+      "base_fraud_rate_pct": 0.12,
+      "notes": "Pharmacy chain; low fraud rate"
+    },
+    {
+      "merchant_name": "Tim Hortons",
+      "mcc": "5812",
+      "risk_level": "LOW",
+      "base_fraud_rate_pct": 0.05,
+      "notes": "Fast food; very low transaction amounts make fraud impractical"
+    },
+    {
+      "merchant_name": "Petro-Canada",
+      "mcc": "5541",
+      "risk_level": "LOW",
+      "base_fraud_rate_pct": 0.15,
+      "notes": "Gas stations; card-present. Monitor for skimming incidents."
+    }
+  ],
+  "regional_risk_modifiers": {
+    "description": "Adjust base fraud probability by region",
+    "regions": [
+      {"region": "Toronto Downtown Core", "modifier": 1.15, "reason": "High transaction density; higher CNP risk"},
+      {"region": "Vancouver Lower Mainland", "modifier": 1.10, "reason": "Elevated crypto and money laundering activity"},
+      {"region": "Rural/Remote Areas", "modifier": 0.85, "reason": "Lower transaction density; lower risk"},
+      {"region": "Airport (YYZ, YVR, YUL)", "modifier": 1.20, "reason": "Transit hubs; legitimate travel creates geo-velocity patterns"}
+    ]
+  },
+  "gift_card_thresholds": {
+    "single_transaction_alert_cad": 500,
+    "rolling_30d_alert_cad": 2000,
+    "notes": "Per FINTRAC Guideline 2 indicators of money laundering. Alert when either threshold is exceeded."
+  }
+}
