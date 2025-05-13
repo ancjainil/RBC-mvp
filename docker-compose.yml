@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  # ── Application ─────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: app
+    image: fraud-detection:latest
+    container_name: fraud_app
+    env_file: .env
+    environment:
+      CHROMA_PERSIST_DIR: /app/data/chroma
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/data/chroma
+      - app_logs:/app/logs
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fraud_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── ChromaDB ─────────────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: fraud_chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /chroma/data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chroma_data:/chroma/data
+    ports:
+      - "8001:8000"
+    networks:
+      - fraud_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Prometheus ───────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fraud_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    networks:
+      - fraud_net
+    restart: unless-stopped
+
+  # ── Grafana ──────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fraud_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - fraud_net
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  app_logs:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  fraud_net:
+    driver: bridge
