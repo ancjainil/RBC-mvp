@@ -1,0 +1,220 @@
+# ============================================================
+# Hand-crafted edge-case test scenarios with expected outcomes
+# ============================================================
+# Each case is run individually against the full pipeline.
+# Expected outcome assertions are validated in tests/integration/
+# test_workflow_end_to_end.py.
+# ============================================================
+
+test_cases:
+
+  # ── Geographic velocity ──────────────────────────────────────────────
+
+  - name: "geo_velocity_impossible_travel_toronto_vancouver"
+    description: >
+      POS transaction in Toronto (Loblaws grocery) followed by a POS
+      transaction in Vancouver 30 minutes later.  Speed ~8,800 km/h —
+      physically impossible.  Should be CRITICAL.
+    transaction:
+      amount: 2500.00
+      currency: CAD
+      merchant_name: "Best Buy Vancouver"
+      merchant_category: electronics
+      merchant_category_code: "5065"
+      channel: pos
+      card_present: true
+      timestamp: "2024-11-15T14:30:00Z"
+      location:
+        lat: 49.2827
+        lon: -123.1207
+        city: Vancouver
+        country_code: CA
+    customer_context:
+      last_transaction_location:
+        lat: 43.6532
+        lon: -79.3832
+        city: Toronto
+      last_transaction_time: "2024-11-15T14:00:00Z"
+      home_city: Toronto
+    expected:
+      risk_level: CRITICAL
+      fraud_type: geo_velocity_anomaly
+      is_fraudulent: true
+      recommended_action: escalate
+
+  # ── Card testing ─────────────────────────────────────────────────────
+
+  - name: "card_testing_micro_charge_then_large"
+    description: >
+      A $1.50 charge at "Digital Verify Service" (known card-testing
+      merchant) followed by a $2,400 electronics purchase 2 hours later
+      from the same unknown device.
+    transaction:
+      amount: 2400.00
+      currency: CAD
+      merchant_name: "Best Buy Online"
+      merchant_category: electronics
+      merchant_category_code: "5065"
+      channel: online
+      card_present: false
+      timestamp: "2024-11-20T16:00:00Z"
+      device_fingerprint: "dev_unknown_abc123"
+      ip_address: "185.23.45.67"
+    customer_context:
+      prior_transaction:
+        amount: 1.50
+        merchant_name: "Digital Verify Service"
+        timestamp: "2024-11-20T14:00:00Z"
+        device_fingerprint: "dev_unknown_abc123"
+      home_city: Ottawa
+    expected:
+      risk_level: HIGH
+      fraud_type: card_testing
+      is_fraudulent: true
+      recommended_action: block
+
+  # ── Account takeover ─────────────────────────────────────────────────
+
+  - name: "account_takeover_new_device_high_amount_money_transfer"
+    description: >
+      Customer who typically shops at Loblaws and Tim Hortons suddenly
+      initiates a $4,000 Interac e-Transfer to an unknown payee from a
+      new device fingerprint at 3am.
+    transaction:
+      amount: 4000.00
+      currency: CAD
+      merchant_name: "Western Union"
+      merchant_category: money_transfer
+      merchant_category_code: "4829"
+      channel: online
+      card_present: false
+      timestamp: "2024-11-18T08:15:00Z"
+      device_fingerprint: "dev_ato_new_xyz789"
+      ip_address: "45.33.67.89"
+    customer_context:
+      typical_categories: [groceries, fast_food, pharmacy]
+      typical_transaction_mean_cad: 45.00
+      known_device_fingerprints: ["dev_iphone_abc", "dev_macbook_def"]
+      home_city: Calgary
+      last_transaction_timestamp: "2024-11-17T19:30:00Z"
+    expected:
+      risk_level: CRITICAL
+      fraud_type: account_takeover
+      is_fraudulent: true
+      recommended_action: escalate
+
+  # ── Legitimate high-value ─────────────────────────────────────────────
+
+  - name: "legitimate_high_value_electronics_known_customer"
+    description: >
+      Customer with a history of electronics purchases at Best Buy
+      buys a $1,500 laptop on their known device in their home city.
+      Should resolve as LOW or MEDIUM, not blocked.
+    transaction:
+      amount: 1499.99
+      currency: CAD
+      merchant_name: "Best Buy"
+      merchant_category: electronics
+      merchant_category_code: "5065"
+      channel: pos
+      card_present: true
+      timestamp: "2024-11-21T14:00:00Z"
+      device_fingerprint: "dev_iphone_known_abc"
+      location:
+        lat: 43.6532
+        lon: -79.3832
+        city: Toronto
+        country_code: CA
+    customer_context:
+      typical_categories: [electronics, online_retail, restaurant, groceries]
+      typical_transaction_mean_cad: 120.00
+      known_device_fingerprints: ["dev_iphone_known_abc"]
+      home_city: Toronto
+      last_transaction_timestamp: "2024-11-21T10:00:00Z"
+    expected:
+      risk_level: MEDIUM
+      is_fraudulent: false
+      recommended_action: approve
+
+  # ── CNP fraud ─────────────────────────────────────────────────────────
+
+  - name: "cnp_fraud_unknown_international_merchant"
+    description: >
+      Online purchase at an unknown merchant from an IP traced to Romania,
+      while the customer's most recent POS transaction was in Halifax 1 hour
+      prior.  New device fingerprint.
+    transaction:
+      amount: 890.00
+      currency: CAD
+      merchant_name: "EuroElec Store"
+      merchant_category: electronics
+      merchant_category_code: "5065"
+      channel: online
+      card_present: false
+      timestamp: "2024-11-22T20:00:00Z"
+      device_fingerprint: "dev_unknown_ro_001"
+      ip_address: "5.189.200.44"
+    customer_context:
+      home_city: Halifax
+      last_transaction_location:
+        lat: 44.6488
+        lon: -63.5752
+        city: Halifax
+      last_transaction_time: "2024-11-22T19:00:00Z"
+      known_device_fingerprints: ["dev_laptop_home", "dev_iphone_personal"]
+    expected:
+      risk_level: HIGH
+      fraud_type: card_not_present
+      is_fraudulent: true
+      recommended_action: block
+
+  # ── Recurring subscription (low risk) ─────────────────────────────────
+
+  - name: "legitimate_recurring_subscription"
+    description: >
+      Monthly Netflix subscription charge on the customer's known device.
+      Amount and merchant match 12 months of history.  Should be LOW risk.
+    transaction:
+      amount: 19.99
+      currency: CAD
+      merchant_name: "Netflix"
+      merchant_category: entertainment
+      merchant_category_code: "7832"
+      channel: online
+      card_present: false
+      recurring: true
+      timestamp: "2024-11-01T07:00:00Z"
+    customer_context:
+      home_city: Montreal
+      typical_categories: [entertainment, restaurant, groceries]
+      typical_transaction_mean_cad: 55.00
+      lifetime_transaction_count: 450
+    expected:
+      risk_level: LOW
+      is_fraudulent: false
+      recommended_action: approve
+
+  # ── FINTRAC threshold gift cards ──────────────────────────────────────
+
+  - name: "gift_card_fintrac_threshold"
+    description: >
+      Customer purchases $600 of Steam Gift Cards and $550 of iTunes Gift
+      Cards within 2 hours.  Total > FINTRAC $500 single-purchase flag.
+      Should trigger regulatory flag.
+    transaction:
+      amount: 600.00
+      currency: CAD
+      merchant_name: "Steam Gift Card"
+      merchant_category: gift_card
+      merchant_category_code: "5999"
+      channel: online
+      card_present: false
+      timestamp: "2024-11-10T15:00:00Z"
+    customer_context:
+      typical_categories: [groceries, gas_station, restaurant]
+      home_city: Toronto
+    expected:
+      risk_level: HIGH
+      is_fraudulent: true
+      regulatory_flags_present: true
+      recommended_action: escalate
